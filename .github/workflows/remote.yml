@@ -1,0 +1,106 @@
+name: Unified Cloud Access (RDP / VPS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      access_type:
+        description: 'Choose server type'
+        required: true
+        default: 'rdp'
+        type: choice
+        options:
+          - rdp
+          - vps
+
+jobs:
+  # ==================== JOB RDP (WINDOWS) ====================
+  secure-rdp:
+    name: Windows RDP via Tailscale
+    runs-on: windows-latest
+    timeout-minutes: 300
+    if: ${{ github.event.inputs.access_type == 'rdp' }}
+    
+    steps:
+      - name: Configure RDP Settings
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          Restart-Service -Name TermService -Force
+
+      - name: Create User (gmxch)
+        run: |
+          $staticPassword = "${{ secrets.RDP_PASSWORD }}"
+          $securePass = ConvertTo-SecureString $staticPassword -AsPlainText -Force
+          # Hapus user lama jika ada, lalu buat baru dengan nama gmxch
+          if (Get-LocalUser -Name "gmxch" -ErrorAction SilentlyContinue) { Remove-LocalUser -Name "gmxch" }
+          New-LocalUser -Name "gmxch" -Password $securePass -AccountNeverExpires -FullName "GMXCH User"
+          Add-LocalGroupMember -Group "Administrators" -Member "gmxch"
+
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci-github-actions
+
+      - name: Set Custom Hostname
+        run: |
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" set --hostname=testing-development-rdp-gmxch
+
+      - name: Display RDP Info & Keep Alive
+        run: |
+          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          Write-Host ""
+          Write-Host "RDP ACCESS DETAILS"
+          Write-Host "host: testing-development-rdp-gmxch.ts.net"
+          Write-Host "IP  : $tsIP"
+          Write-Host "USER: gmxch"
+          Write-Host "PASS: [SECRETS → RDP_PASSWORD]"
+          
+          while ($true) { Start-Sleep -Seconds 300 }
+
+  # ==================== JOB VPS (LINUX SSH) ====================
+  secure-vps:
+    name: Linux VPS via Tailscale
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    if: ${{ github.event.inputs.access_type == 'vps' }}
+    
+    steps:
+      - name: Setup System
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y openssh-server curl wget net-tools neofetch tmux
+
+      - name: Create User (gmxch)
+        run: |
+          sudo useradd -m -s /bin/bash gmxch
+          echo "gmxch:${{ secrets.VPS_PASSWORD }}" | sudo chpasswd
+          sudo usermod -aG sudo gmxch
+          echo "gmxch ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/gmxch
+          
+          sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
+          sudo service ssh start || sudo systemctl start ssh
+
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci-github-actions
+
+      - name: Set Custom Hostname
+        run: |
+          sudo tailscale set --hostname=testing-development-vps-gmxch
+
+      - name: Display VPS Info & Keep Alive
+        run: |
+          TS_IP=$(tailscale ip -4)
+          echo "VPS ACCESS DETAILS"
+          echo "HOST: testing-development-vps-gmxch.ts.net"
+          echo "IP  : $TS_IP"
+          echo "USER: gmxch"
+          echo "PASS: [SECRETS → VPS_PASSWORD]"
+          echo "ssh gmxch@testing-development-vps-gmxch.ts.net"
+          while true; do sleep 300; done
