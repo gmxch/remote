@@ -13,15 +13,15 @@ on:
           - vps
 
 jobs:
-  # ==================== JOB RDP (WINDOWS) ====================
+
   secure-rdp:
     name: Windows RDP via Tailscale
     runs-on: windows-latest
-    timeout-minutes: 300
+    timeout-minutes: 330
     if: ${{ github.event.inputs.access_type == 'rdp' }}
     
     steps:
-      - name: Configure RDP Settings
+      - name: Configurating
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
@@ -29,7 +29,7 @@ jobs:
 
       - name: Create User (gmxch)
         run: |
-          $staticPassword = "${{ secrets.RDP_PASSWORD }}"
+          $staticPassword = "${{ secrets.REMOTE_PASSWORD }}"
           $securePass = ConvertTo-SecureString $staticPassword -AsPlainText -Force
           # Hapus user lama jika ada, lalu buat baru dengan nama gmxch
           if (Get-LocalUser -Name "gmxch" -ErrorAction SilentlyContinue) { Remove-LocalUser -Name "gmxch" }
@@ -52,22 +52,21 @@ jobs:
           $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
           Write-Host ""
           Write-Host "RDP ACCESS DETAILS"
-          Write-Host "host: testing-development-rdp-gmxch.ts.net"
+          Write-Host "HOST: testing-development-rdp-gmxch.ts.net"
           Write-Host "IP  : $tsIP"
           Write-Host "USER: gmxch"
-          Write-Host "PASS: [SECRETS → RDP_PASSWORD]"
+          Write-Host "PASS: [SECRETS → REMOTE_PASSWORD]"
           
           while ($true) { Start-Sleep -Seconds 300 }
 
-  # ==================== JOB VPS (LINUX SSH) ====================
   secure-vps:
     name: Linux VPS via Tailscale
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 330
     if: ${{ github.event.inputs.access_type == 'vps' }}
     
     steps:
-      - name: Setup System
+      - name: Configurating
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y openssh-server curl wget net-tools neofetch tmux
@@ -75,7 +74,7 @@ jobs:
       - name: Create User (gmxch)
         run: |
           sudo useradd -m -s /bin/bash gmxch
-          echo "gmxch:${{ secrets.VPS_PASSWORD }}" | sudo chpasswd
+          echo "gmxch:${{ secrets.REMOTE_PASSWORD }}" | sudo chpasswd
           sudo usermod -aG sudo gmxch
           echo "gmxch ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/gmxch
           
@@ -101,6 +100,5 @@ jobs:
           echo "HOST: testing-development-vps-gmxch.ts.net"
           echo "IP  : $TS_IP"
           echo "USER: gmxch"
-          echo "PASS: [SECRETS → VPS_PASSWORD]"
-          echo "ssh gmxch@testing-development-vps-gmxch.ts.net"
+          echo "PASS: [SECRETS → REMOTE_PASSWORD]"
           while true; do sleep 300; done
