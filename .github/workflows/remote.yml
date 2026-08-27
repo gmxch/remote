@@ -31,7 +31,6 @@ jobs:
         run: |
           $staticPassword = "${{ secrets.REMOTE_PASSWORD }}"
           $securePass = ConvertTo-SecureString $staticPassword -AsPlainText -Force
-          # Hapus user lama jika ada, lalu buat baru dengan nama gmxch
           if (Get-LocalUser -Name "gmxch" -ErrorAction SilentlyContinue) { Remove-LocalUser -Name "gmxch" }
           New-LocalUser -Name "gmxch" -Password $securePass -AccountNeverExpires -FullName "GMXCH User"
           Add-LocalGroupMember -Group "Administrators" -Member "gmxch"
@@ -39,9 +38,7 @@ jobs:
       - name: Connect Tailscale
         uses: tailscale/github-action@v4
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci-github-actions
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
       - name: Set Custom Hostname
         run: |
@@ -85,9 +82,7 @@ jobs:
       - name: Connect Tailscale
         uses: tailscale/github-action@v4
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci-github-actions
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
       - name: Set Custom Hostname
         run: |
