@@ -20,13 +20,117 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Patch Dead Dependency (Auto-Fix)
+    - name: Patch Dead Dependency & Code
       run: |
-        # 1. Ganti dependency mati dengan fork aktif (Vanniktech/CanHub)
+        # 1. Ganti dependency mati dengan fork aktif (CanHub)
         sed -i 's/com.theartofdev.edmodo:android-image-cropper:2.8.0/com.vanniktech:android-image-cropper:4.5.0/g' app/build.gradle
         
-        # 2. Update package import di semua file .kt
-        find app/src -name "*.kt" -exec sed -i 's/com.theartofdev.edmodo.cropper/com.canhub.cropper/g' {} +
+        # 2. Overwrite ShowLabel.kt dengan versi yang kompatibel dengan CanHub 4.x API
+        cat << 'EOF' > app/src/main/java/com/eye/imagelaberlecropperkotlin/ShowLabel.kt
+package com.eye.imagelaberlecropperkotlin
+
+import android.content.ContentValues.TAG
+import android.graphics.Rect
+import android.net.Uri
+import android.os.Bundle
+import android.util.Log
+import android.view.View
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import com.canhub.cropper.CropImageContract
+import com.canhub.cropper.CropImageContractOptions
+import com.canhub.cropper.CropImageOptions
+import java.io.File
+
+class ShowLabel : AppCompatActivity() {
+    private var imageUri: Uri? = null
+    private var textView: TextView? = null
+    private var labeledImage: ImageView? = null
+    private var pathxml = ""
+    private var xmlN = ""
+    private var xmlP = ""
+    lateinit var rect: Rect
+
+    private val cropImage = registerForActivityResult(CropImageContract()) { result ->
+        if (result.isSuccessful) {
+            val resultUri = result.uriContent
+            labeledImage?.setImageURI(resultUri)
+            textView?.visibility = View.GONE
+
+            val cropRect = result.cropRect
+            if (cropRect != null) {
+                val minX = cropRect.left
+                val minY = cropRect.top
+                val maxX = cropRect.right
+                val maxY = cropRect.bottom
+
+                Log.d(TAG, "onActivityResult: xmin: $minX ymin: $minY xmax: $maxX ymax: $maxY")
+
+                pathxml = xmlP + xmlN
+                val file = File(pathxml)
+                val bufferedReader = file.bufferedReader()
+                val stringBuilder = StringBuilder()
+                bufferedReader.forEachLine { stringBuilder.append(it).appendLine() }
+                bufferedReader.close()
+
+                val writer = file.bufferedWriter()
+                val startIndex = stringBuilder.indexOf("<bndbox>")
+                val endIndex = stringBuilder.indexOf("</bndbox>")
+
+                val newBndbox = "<bndbox>\n<xmin>$minX</xmin>\n<ymin>$minY</ymin>\n<xmax>$maxX</xmax>\n<ymax>$maxY</ymax>\n"
+                stringBuilder.replace(startIndex, endIndex, newBndbox)
+
+                writer.append(stringBuilder)
+                writer.close()
+            }
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_show_label)
+        
+        labeledImage = findViewById(R.id.imagelabled)
+        textView = findViewById(R.id.textView)
+        textView?.visibility = View.VISIBLE
+
+        val intent = intent
+        val xmlString = intent.getStringExtra("xmlString")
+        xmlN = intent.getStringExtra("xmlName").toString()
+        xmlP = intent.getStringExtra("xmlPath").toString()
+
+        val path = (xmlString?.let { "<path>(.*?)</path>".toRegex().find(it) }?.groupValues?.get(1) ?: "") + "/"
+        val name = xmlString?.let { "<filename>(.*?)</filename>".toRegex().find(it) }?.groupValues?.get(1)
+        val xmin = xmlString?.let { "<xmin>(.*?)</xmin>".toRegex().find(it) }?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val ymin = xmlString?.let { "<ymin>(.*?)</ymin>".toRegex().find(it) }?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val xmax = xmlString?.let { "<xmax>(.*?)</xmax>".toRegex().find(it) }?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val ymax = xmlString?.let { "<ymax>(.*?)</ymax>".toRegex().find(it) }?.groupValues?.get(1)?.toIntOrNull() ?: 0
+
+        imageUri = Uri.fromFile(File(path, name))
+        rect = Rect(xmin, ymin, xmax, ymax)
+        
+        startCropActivity()
+    }
+
+    private fun startCropActivity() {
+        try {
+            val options = CropImageContractOptions(
+                uri = imageUri,
+                cropImageOptions = CropImageOptions(
+                    cropMenuCropButtonTitle = "CHANGE",
+                    activityTitle = "Image Labeled",
+                    autoZoomEnabled = false,
+                    initialCropWindowRectangle = rect
+                )
+            )
+            cropImage.launch(options)
+        } catch (e: Exception) {
+            Log.d(TAG, "startCropActivity: $e")
+        }
+    }
+}
+EOF
 
     - name: Decode Keystore
       uses: timheuer/base64-to-file@v1.2
