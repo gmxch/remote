@@ -1,0 +1,43 @@
+name: Build External Android APK
+
+on:
+  workflow_dispatch: # Jalankan manual dari tab Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Target Repo
+      uses: actions/checkout@v4
+      with:
+        repository: MahdiAhmadnejad/Image-Labeler-android
+        path: '.'
+
+    - name: Set up JDK 11
+      uses: actions/setup-java@v4
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Decode Keystore
+      uses: timheuer/base64-to-file@v1.2
+      with:
+        fileName: 'release_keystore.jks'
+        encodedString: ${{ secrets.KEYSTORE_BASE64 }}
+
+    - name: Build & Sign Release APK
+      env:
+        KEYSTORE_FILE: ${{ steps.decode_keystore.outputs.filePath }}
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        chmod +x gradlew
+        ./gradlew assembleRelease
+
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Image-Labeler-Signed-APK
+        path: app/build/outputs/apk/release/app-release.apk
