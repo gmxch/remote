@@ -1,33 +1,30 @@
-name: Build ARM64 Binary
-
-on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
+name: Build ARM64
+on: workflow_dispatch
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Clone cfsolve
+        run: git clone https://github.com/chris124567/cfsolve.git repo
 
-      - name: Install Rust toolchain
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang libclang-dev git perl pkg-config
+
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.98.0"
-          targets: aarch64-unknown-linux-gnu
-          components: clippy, rustfmt
 
-      - name: Install cross (Docker-based cross compiler)
-        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Build challenge
+        working-directory: repo
+        run: cargo build --release --bin challenge
 
-      - name: Build challenge binary for ARM64
-        run: cross build --release --bin challenge --target aarch64-unknown-linux-gnu
-
-      - name: Upload binary artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: challenge-aarch64
-          path: target/aarch64-unknown-linux-gnu/release/challenge
+          path: repo/target/release/challenge
           if-no-files-found: error
